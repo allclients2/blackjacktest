@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import Card from './Card';
 
 // Create a deck of cards
 const createDeck = () => {
   const suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
-  const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace'];
   let deck = [];
   for (let suit of suits) {
     for (let value of values) {
@@ -25,98 +26,92 @@ const shuffleDeck = (deck) => {
 
 // Get card value for calculating score
 const getCardValue = (card) => {
-  if (card.value === 'J' || card.value === 'Q' || card.value === 'K') {
+  if (card.value === 'Jack' || card.value === 'Queen' || card.value === 'King') {
     return 10;
-  } else if (card.value === 'A') {
+  } else if (card.value === 'Ace') {
     return 11; // Aces can be 1 or 11, but we'll handle that later
   } else {
     return parseInt(card.value);
   }
 };
 
-const generatePin = () => Math.floor(100 + Math.random() * 900).toString(); // Generates a 3-digit PIN
-
 const App = () => {
   const [numPlayers, setNumPlayers] = useState(2);
   const [players, setPlayers] = useState([]);
   const [currentPlayer, setCurrentPlayer] = useState(1); // Start with player 1
-  const [inputPin, setInputPin] = useState('');
-  const [showPinScreen, setShowPinScreen] = useState(true);
-  const [playerPins, setPlayerPins] = useState({});
   const [gameStarted, setGameStarted] = useState(false);
-  const [pinSetupStage, setPinSetupStage] = useState(0);
   const [playerCards, setPlayerCards] = useState({});
   const [playerScores, setPlayerScores] = useState({});
+  const [playerBets, setBets] = useState({});
   const [deck, setDeck] = useState(shuffleDeck(createDeck()));
+  const [surrenders, setSurrenders] = useState([]);
+  const [round, setRound] = useState(0);
 
   const startGame = () => {
     let initialPlayers = [];
-    let pins = {};
     let cards = {};
     let scores = {};
+    let bets = {};
+
     let newDeck = shuffleDeck(createDeck());
     for (let i = 0; i < numPlayers; i++) { // Player 0 is the dealer
       initialPlayers.push({ id: i, name: i === 0 ? 'Dealer' : `Player ${i}`, score: 0 });
-      pins[i] = generatePin();
       cards[i] = [newDeck.pop(), newDeck.pop()];
       scores[i] = calculateScore(cards[i]);
+      bets[i] = 20;
     }
     setPlayers(initialPlayers);
-    setPlayerPins(pins);
     setPlayerCards(cards);
     setPlayerScores(scores);
+    setSurrenders([]);
     setDeck(newDeck);
-    setPinSetupStage(1);
-    alert('Give the computer to the dealer');
-  };
-
-  useEffect(() => {
-    if (pinSetupStage > 0 && pinSetupStage <= numPlayers) {
-      alert(`PIN: ${playerPins[pinSetupStage - 1]}`);
-      if (pinSetupStage < numPlayers) {
-        alert(`Give the computer to ${players[pinSetupStage].name}`);
-      }
-      setPinSetupStage(pinSetupStage + 1);
-    } else if (pinSetupStage === numPlayers + 1) {
-      alert('Game starts!');
-      setGameStarted(true);
-      setShowPinScreen(true);
-    }
-  }, [pinSetupStage, playerPins, players, numPlayers]);
-
-  const handlePinInput = (e) => {
-    const pin = e.target.value;
-    setInputPin(pin);
-    if (pin.length === 3) {
-      if (pin === playerPins[currentPlayer]) {
-        setShowPinScreen(false);
-      } else {
-        alert('Incorrect PIN. Try again.');
-        setInputPin('');
-      }
-    }
+    setCurrentPlayer(1); // Start with player 1
+    setGameStarted(true);
+    setRound(round + 1);
+    setBets(bets);
   };
 
   const nextTurn = () => {
-    const nextPlayer = currentPlayer === numPlayers - 1 ? 0 : currentPlayer + 1;
-    setCurrentPlayer(nextPlayer);
-    setShowPinScreen(true);
-    setInputPin('');
-    alert(`Give the computer to ${players[nextPlayer].name}`);
+    if (currentPlayer === 0) {
+      endRound();
+    } else {
+      const nextPlayer = currentPlayer === numPlayers - 1 ? 0 : currentPlayer + 1;
+      setCurrentPlayer(nextPlayer);
+    }
+  };
+
+  const endRound = () => {
+    alert('Round over! Starting next round...');
+    startGame();
   };
 
   const handlePlayerAction = (action) => {
+    if (action === "surrender") {
+      setSurrenders(prevSurrenders => [currentPlayer, ...prevSurrenders]);
+      nextTurn();
+      // TODO: Half bet
+      return;
+    }
+
     let newCards = { ...playerCards };
     let newScores = { ...playerScores };
-    if (action === 'hit') {
+    if (action === "hit" || action == "double") {
       const card = deck.pop();
       newCards[currentPlayer].push(card);
       newScores[currentPlayer] = calculateScore(newCards[currentPlayer]);
       setDeck(deck);
     }
+
     setPlayerCards(newCards);
     setPlayerScores(newScores);
-    if (action === 'stand' || newScores[currentPlayer] >= 21) {
+
+    if (action === 'stand') {
+      nextTurn();
+    } else if (action === 'double') {
+      nextTurn();
+      // TODO: Double bet
+    } else if (newScores[currentPlayer] > 21) {
+      alert("You Busted! Your score is: " + newScores[currentPlayer]);
       nextTurn();
     }
   };
@@ -126,7 +121,7 @@ const App = () => {
     let aceCount = 0;
     for (let card of cards) {
       score += getCardValue(card);
-      if (card.value === 'A') {
+      if (card.value === 'Ace') {
         aceCount++;
       }
     }
@@ -137,64 +132,90 @@ const App = () => {
     return score;
   };
 
-  const getDealerDisplayCards = () => {
-    const dealerCards = playerCards[0];
-    if (dealerCards.length === 0) return '';
-    return [dealerCards[0].value + ' of ' + dealerCards[0].suit, 'X'].join(', ');
-  };
+  const handleBet = (amount) => {
+    let newBets = { ...playerBets };
+    newBets[currentPlayer] += amount;
+    setBets(newBets);
+  }
 
-  const getCardDisplay = (cards) => {
-    return cards.map(card => `${card.value} of ${card.suit}`).join(', ');
+  const getCardDisplay = (cards, hideFirst) => {
+    return cards.map((card, index) => (
+      <Card key={`${card.value}${card.suit}`} card={card} hidden={hideFirst && index === 0} />
+    ));
   };
-
+  
   return (
     <div className="App">
       {!gameStarted ? (
         <div>
           <h1>Blackjack Game</h1>
           <label>
-            Number of Players (including dealer):
+            <p style={{marginLeft: 15}}>Number of Players (including dealer)</p>  
             <input
               type="number"
               value={numPlayers}
               onChange={(e) => setNumPlayers(Number(e.target.value))}
               min="2"
-              max="4"
+              max="12"
+              className="number-input"
             />
           </label>
           <button onClick={startGame}>Start Game</button>
         </div>
       ) : (
         <div>
-          {showPinScreen ? (
-            <div>
-              <h2>Enter PIN for {players[currentPlayer].name}</h2>
+          <div className="Table">
+            <h2>{players[currentPlayer].name}'s Turn</h2>
+            <div className="players-cards">
+              {players.map((player, index) => (
+                <div key={index} style={surrenders.includes(player.id) || playerScores[player.id] > 21 ? { opacity : 0.5 } : null} className="player-section">
+                  <div className="card-container-label">
+                    <h3 style={player.id === currentPlayer ? { fontWeight: 'bold' } : {}}>{player.name}</h3>
+                    {surrenders.includes(player.id) ? (<img className = "surrenderFlag" src="/img/surrender.png" alt="Player surrendered." />) : null}
+                  </div>
+                  <div className="card-container">
+                    {getCardDisplay(playerCards[player.id], player.id === 0 && currentPlayer != 0)}
+                  </div>
+                  <div className="card-container-label">
+                    {!(player.id === 0 && currentPlayer != 0) ? (<p>Score: {playerScores[player.id]}</p>) : null}
+                    {player.id != 0 ? (<p>Bet: {playerBets[player.id]}</p>) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="Options"> {/* For round */}
+              <button onClick={() => handlePlayerAction('hit')}>Hit</button>
+              <button onClick={() => handlePlayerAction('stand')}>Stand</button>
+              <button onClick={() => handlePlayerAction('surrender')}>Surrender</button>
+              <button onClick={() => handlePlayerAction('double')}>Double</button>
+              {playerCards[0][1].value == "Ace" ? <button onClick={() => handlePlayerAction('insurance')}>Insurance (${playerBets[currentPlayer] / 2})</button> : null}
+            </div>
+            {currentPlayer != 0 ? (
+            <div className="Options"> {/* Another row for bets */}
+              <p>Default Bet:</p>
               <input
-                type="password"
-                value={inputPin}
-                onChange={handlePinInput}
-                maxLength="3"
+                type="number"
+                value={playerBets[currentPlayer]}
+                onChange={(event) => {
+                  let value = event.target.value;
+                  if (value > 20 && value < 100) {
+                    let bets = {...playerBets};
+                    bets[currentPlayer] = Number(event.target.value);
+                    setBets(bets);
+                  }
+                }}
+                min="20"
+                max="100"
+                className="number-input"
               />
             </div>
-          ) : (
-            <div>
-              <h2>{players[currentPlayer].name}'s Turn</h2>
-              <div>
-                <p>Cards: {currentPlayer === 0 ? getDealerDisplayCards() : getCardDisplay(playerCards[currentPlayer])}</p>
-                <p>Score: {playerScores[currentPlayer]}</p>
-              </div>
-              {currentPlayer !== 0 && (
-                <>
-                  <button onClick={() => handlePlayerAction('hit')}>Hit</button>
-                  <button onClick={() => handlePlayerAction('stand')}>Stand</button>
-                </>
-              )}
-            </div>
-          )}
+            ) : null}
+          </div>
         </div>
       )}
     </div>
   );
 };
+
 
 export default App;
